@@ -1,0 +1,51 @@
+# === data: never commit controlled-access or large data ===
+*.vcf
+*.vcf.gz
+*.bgen
+*.bed
+*.bim
+*.fam
+*.pgen
+*.psam
+*.pvar
+*.csv
+*.tsv
+*.parquet
+*.RData
+*.rds
+*.h5
+*.idat            # raw EPIC array intensity data
+*.idat.gz
+data/
+outputs/
+results/
+
+# === credentials (belt-and-suspenders) ===
+*-key.json
+service_account*.json
+*.pem
+*.token
+.env
+.config/gcloud/
+
+# === jupyter ===
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+*.ipynb           # source of truth = paired .py/.Rmd; delete this line to track notebooks
+
+# === python ===
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# === R ===
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+
+# === os/editor ===
+.DS_Store
+*.swp
+.vscode/

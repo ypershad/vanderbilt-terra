@@ -1,0 +1,17 @@
+# jupytext.toml  (copy into each repo root)
+# Source of truth in git = text scripts; the .ipynb is generated on Terra.
+#
+# Pairing is per-language (Jupytext picks by kernel language, so one config
+# serves every repo):
+#   - R notebooks      <-> .R  (percent format)
+#   - Python notebooks <-> .py (percent format)
+
+[formats]
+"ipynb" = "R:percent,py:percent"
+
+# Keep the .ipynb OUT of git; only the script is tracked.
+# Strip cell metadata + all outputs (clean diffs, no data/identifiers in git)...
+cell_metadata_filter = "-all"
+# ...but KEEP kernelspec so the generated .ipynb opens with the right kernel
+# (R vs Python) on Terra automatically. It's a tiny static header block.
+notebook_metadata_filter = "kernelspec"
