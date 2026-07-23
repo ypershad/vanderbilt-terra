@@ -47,6 +47,9 @@ def resolve_configs(yaml_path, data_dir):
             column_map=c["column_map"],
             snpid_col=c.get("snpid_col"),
             rsid_col=c.get("rsid_col"),
+            n_cases=c.get("n_cases"),
+            n_controls=c.get("n_controls"),
+            rounded_precision=c.get("rounded_precision", False),
             qc=qc_cfg,
         )
         if "strata" in c:                         # BioVU: many files, shared parser
