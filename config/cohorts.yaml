@@ -1,19 +1,21 @@
 # cohorts.yaml — per-cohort parser configs for hematuria (phecode 593) meta-analysis.
 #
-# STATUS: SCAFFOLD. Metadata below (cohort/ancestry/phenodef/liftover intent) is
-# known from filenames + the brief. Every `column_map` is left as TODO on purpose:
-# no column mapping is hardcoded until `scripts/00_inspect_cohorts.py` output is
-# confirmed. Fill `column_map` and set `build_confirmed: true` per file, then the
-# harmonizer reads exclusively from this file (one config per cohort, no if/else).
+# STATUS: column_map CONFIRMED from scripts/00_inspect_cohorts.py output (headers +
+# first rows inspected). Metadata known from filenames/brief. Remaining TODO items
+# are flagged inline (build confirmation for UKB/KoGES/Taiwan; case/control counts).
 #
 # Target common schema (harmonized output columns):
 #   CHR POS(GRCh38) EA NEA EAF BETA SE P N N_CASES N_CONTROLS INFO
 #   + key38 = "CHR:POS:sorted(REF,ALT)"  (surfaces palindromic/strand issues)
 #
-# effect_scale: log_odds | OR  (if OR -> harmonizer takes ln(OR); brief wants IVW
-#   on a comparable log-odds scale, so this must be verified per cohort).
-# pval_field: P | LOG10P | MLOGP  (REGENIE=LOG10P; keep log10 internally to avoid
-#   underflow; FinnGen/pheweb often carry mlogp).
+# EFFECT-ALLELE CONVENTION (verified uniform across all 13 files):
+#   EA  = ALT = 4th field of SNPID "chr:pos:REF:ALT"
+#   NEA = REF = 3rd field
+#   EAF = frequency of ALT ; BETA is per-ALT, log-odds scale (binary, no OR anywhere)
+#
+# column_map keys map TARGET -> SOURCE column name (null = not present in file):
+#   chr pos ea nea eaf beta se p log10p chisq n
+# snpid_col/snpid_format let the harmonizer cross-check REF/ALT vs the allele cols.
 
 defaults:
   target_build: GRCh38
@@ -23,39 +25,65 @@ defaults:
   #   biovu_results: $HOME/bicklab-pershad/edit/hematuria_gwas/biovu_results
   # From the repo, DATA_DIR = "../hematuria_gwas" (anchor everything to it + p()).
   data_dir_vm: "$HOME/bicklab-pershad/edit/hematuria_gwas"
-  # Environment reality (confirmed): METAL + polars + matplotlib PRESENT.
-  # MISSING and required before those steps can run:
-  #   - liftover: pyliftover OR CrossMap  (needed for GRCh37 cohorts -> 38)
-  #       + UCSC chain file hg19ToHg38.over.chain.gz
-  #   - MR-MEGA binary (primary trans-ancestry). Fixed-effect METAL trans-ancestry
-  #       sensitivity can run without it.
-  # QC thresholds (Task 1.4). Applied per-cohort, each drop count logged.
+  # Environment (confirmed): METAL + polars + matplotlib PRESENT.
+  # MISSING and required before those steps run:
+  #   - pyliftover (or CrossMap) + UCSC hg19ToHg38.over.chain.gz  (GRCh37 -> 38)
+  #   - MR-MEGA binary (primary trans-ancestry). Fixed-effect METAL sensitivity
+  #     runs without it.
   qc:
     eaf_min: 0.001
     eaf_max: 0.999
-    mac_min: 20          # used instead of eaf bounds where N present
-    info_min: 0.3
+    mac_min: 20            # used instead of eaf bounds where N present (BioVU/MGI)
+    info_min: 0.3          # NOTE: NO file carries INFO -> filter cannot be applied
     abs_beta_max: 10
     require_se_positive_finite: true
     require_nonmissing_p: true
-    autosomes_only_default: true   # chrX kept only where cohort reported it
+    autosomes_only_default: true    # chrX kept only where the cohort reported it
+
+  # CROSS-CUTTING FINDINGS from inspection (affect analysis, recorded for methods):
+  findings:
+    info_absent_all_cohorts: true       # no imputation-quality column anywhere
+    rounded_precision_cohorts: [ukb, taiwan, koges]  # PheWeb ~2 sig-fig beta/se/p
+    no_eaf: [koges]                      # breaks eaf-QC, palindrome fix, MR-MEGA axis
+    per_variant_N_present: [biovu_agd250k, mgi]      # others have no N column
+    case_control_counts_in_file: []      # NONE -> lambda_1000 needs external counts
+
+  # DECISIONS (user-confirmed, drive the pipeline):
+  decisions:
+    rounded_cohorts: include_document_caveat   # ukb/taiwan/koges stay in primary meta
+    lambda_1000: skip_for_now                  # Task 2 reports lambda_GC only
+    biovu_allele_orientation: "A1=effect/ALT confirmed"  # Beta per A1(ALT); FREQ_A1=EAF
 
 cohorts:
 
-  # ---- BioVU AGD250k, REGENIE 4.0. 8 strata (2 ancestry x 4 phenodef). ----
-  # NOTE: 593 vs GU_593 and the .2 suffix are DIFFERENT phenotype definitions.
-  # Never mix definitions in one meta. Each entry is its own stratum.
-  # Likely REGENIE cols: CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ INFO N TEST BETA
-  #   SE CHISQ LOG10P — EA=ALLELE1, NEA=ALLELE0. CONFIRM from inspect output +
-  #   confirm a Firth run (TEST column / EXTRA). Do not assume.
+  # ---- BioVU AGD250k. Post-processed REGENIE (NOT raw regenie cols). 8 strata. ----
+  # header: SNPID Chr Pos A1 A2 FREQ_A1 Beta SE Chisq N P
+  # A1=ALT(effect), A2=REF. P given directly BUT derive log10p from Chisq=(Beta/SE)^2
+  # to stay underflow-safe at genome-wide significance. Firth NOT confirmable (no
+  # TEST col); assumed Firth-corrected log-odds per standard AGD REGENIE --bt run.
   biovu_agd250k:
-    format: regenie
-    build_claim: GRCh38
-    build_confirmed: false        # TODO
+    format: regenie_postproc
+    build: GRCh38
+    build_confirmed: true
     liftover: false
-    effect_scale: log_odds        # REGENIE --bt; CONFIRM Firth
-    pval_field: LOG10P
-    column_map: {}                # TODO after inspect
+    effect_scale: log_odds
+    snpid_col: SNPID
+    snpid_format: "chr:pos:ref:alt"
+    column_map:
+      chr: Chr            # numeric, no 'chr' prefix
+      pos: Pos
+      ea: A1
+      nea: A2
+      eaf: FREQ_A1
+      beta: Beta
+      se: SE
+      p: P
+      log10p: null        # derive from chisq
+      chisq: Chisq
+      n: N
+    n_cases: null         # TODO: not in file (needed for lambda_1000)
+    n_controls: null      # TODO
+    info: null            # absent
     strata:
       - {file: agd250k_eur.593.pvalue_ordered.regenie.gz,      ancestry: EUR, phenodef: "593"}
       - {file: agd250k_eur.593.2.pvalue_ordered.regenie.gz,    ancestry: EUR, phenodef: "593.2"}
@@ -66,78 +94,173 @@ cohorts:
       - {file: agd250k_afr.GU_593.pvalue_ordered.regenie.gz,   ancestry: AFR, phenodef: "GU_593"}
       - {file: agd250k_afr.GU_593.2.pvalue_ordered.regenie.gz, ancestry: AFR, phenodef: "GU_593.2"}
 
-  # ---- MGI, EUR. Filename asserts GRCh38. Format unknown (SAIGE? REGENIE?). ----
+  # ---- MGI, EUR. SAIGE output. GRCh38 (filename). ----
+  # header: CHR POS SNPID Allele1 Allele2 AC_Allele2 AF_Allele2 N BETA SE Tstat
+  #         p.value p.value.NA Is.SPA.converge varT varTstar AF.Cases AF.Controls
+  # SAIGE: Allele2=ALT(effect), Allele1=REF. CHR has 'chr' prefix -> strip.
   mgi:
     file: mgi_eur_X593.output_GRCh38.gz
     ancestry: EUR
     phenodef: X593
-    format: UNKNOWN               # TODO from inspect
-    build_claim: GRCh38
-    build_confirmed: false
+    format: saige
+    build: GRCh38
+    build_confirmed: true
     liftover: false
-    effect_scale: UNKNOWN         # TODO (OR vs BETA)
-    pval_field: UNKNOWN
-    column_map: {}
+    effect_scale: log_odds
+    snpid_col: SNPID
+    snpid_format: "chr:pos:ref:alt"
+    column_map:
+      chr: CHR            # 'chr' prefix -> strip
+      pos: POS
+      ea: Allele2
+      nea: Allele1
+      eaf: AF_Allele2
+      beta: BETA
+      se: SE
+      p: p.value
+      log10p: null
+      chisq: null         # derive log10p from beta/se only if p underflows to 0
+      n: N
+    extra_qc:
+      spa_converge_col: Is.SPA.converge   # keep == 1
+    af_cases_col: AF.Cases
+    af_controls_col: AF.Controls
+    n_cases: null         # TODO (AF.Cases present but not the count)
+    n_controls: null      # TODO
+    info: null
 
-  # ---- UKB PheWeb. Likely GRCh37 -> LIFTOVER to 38. ----
+  # ---- UKB PheWeb. beta/se/p ROUNDED to ~2 sig figs. Build likely GRCh37. ----
+  # header: chrom pos ref alt rsids nearest_genes consequence pval beta sebeta af
+  #         case_af control_af tstat  ; EA=alt, NEA=ref. No N, no INFO.
   ukb:
     file: ukb_pheweb_phenocode-593.tsv.gz
     ancestry: EUR
     phenodef: "593"
-    format: pheweb?
-    build_claim: GRCh37
+    format: pheweb
+    build: GRCh37         # PRIOR — confirm empirically vs FinnGen rsIDs before lift
     build_confirmed: false
-    liftover: true                # CONFIRM build first, then lift
-    effect_scale: UNKNOWN
-    pval_field: UNKNOWN
-    column_map: {}
+    liftover: true        # gated on build-check
+    effect_scale: log_odds
+    rounded_precision: true
+    snpid_col: null
+    column_map:
+      chr: chrom
+      pos: pos
+      ea: alt
+      nea: ref
+      eaf: af
+      beta: beta
+      se: sebeta
+      p: pval
+      log10p: null
+      chisq: null
+      n: null
+    af_cases_col: case_af
+    af_controls_col: control_af
+    n_cases: null         # TODO
+    n_controls: null      # TODO
+    info: null
 
-  # ---- FinnGen R7. GRCh38. Standard FinnGen sumstat schema. ----
+  # ---- FinnGen R7. GRCh38. Full precision. mlogp available (use as log10p). ----
+  # header: #chrom pos ref alt rsids nearest_genes pval mlogp beta sebeta af_alt
+  #         af_alt_cases af_alt_controls ; EA=alt, NEA=ref. '#chrom' -> strip '#'.
   finngen:
     file: summary_stats_finngen_R7_R18_UNSPE_HAEMATU.gz
-    ancestry: FIN                 # Finnish; grouped with EUR meta per brief
+    ancestry: FIN         # grouped into EUR meta per brief
     phenodef: R18_UNSPE_HAEMATU
     format: finngen
-    build_claim: GRCh38
-    build_confirmed: false
+    build: GRCh38
+    build_confirmed: true
     liftover: false
-    effect_scale: log_odds        # FinnGen reports beta (log-odds); CONFIRM
-    pval_field: UNKNOWN           # has both pval and mlogp; prefer mlogp internally
-    column_map: {}
+    effect_scale: log_odds
+    snpid_col: null
+    column_map:
+      chr: "#chrom"       # strip leading '#'
+      pos: pos
+      ea: alt
+      nea: ref
+      eaf: af_alt
+      beta: beta
+      se: sebeta
+      p: pval
+      log10p: mlogp       # underflow-safe; prefer this internally
+      chisq: null
+      n: null
+    af_cases_col: af_alt_cases
+    af_controls_col: af_alt_controls
+    n_cases: null         # TODO (FinnGen R7 manifest has these — can fill)
+    n_controls: null      # TODO
+    info: null
 
-  # ---- Taiwan Biobank. BUILD UNKNOWN — must check explicitly. ----
+  # ---- Taiwan Biobank. beta/se/p ROUNDED. BUILD UNKNOWN — must confirm. ----
+  # header: chrom pos ref alt rsids nearest_genes pval beta sebeta af case_af
+  #         control_af ac tstat ; EA=alt, NEA=ref. 'ac' present (dosage AC).
   taiwan:
     file: 593_Taiwan_biobank_Aug132025.tsv.gz
     ancestry: EAS
     phenodef: "593"
-    format: UNKNOWN
-    build_claim: UNKNOWN          # CHECK EXPLICITLY -> may require liftover
+    format: pheweb
+    build: UNKNOWN        # CHECK EXPLICITLY vs FinnGen rsIDs; lift if GRCh37
     build_confirmed: false
     liftover: UNKNOWN
-    effect_scale: UNKNOWN
-    pval_field: UNKNOWN
-    column_map: {}
+    effect_scale: log_odds
+    rounded_precision: true
+    snpid_col: null
+    column_map:
+      chr: chrom
+      pos: pos
+      ea: alt
+      nea: ref
+      eaf: af
+      beta: beta
+      se: sebeta
+      p: pval
+      log10p: null
+      chisq: null
+      n: null             # 'ac' present but N not derived blindly
+    ac_col: ac
+    af_cases_col: case_af
+    af_controls_col: control_af
+    n_cases: null         # TODO
+    n_controls: null      # TODO
+    info: null
 
-  # ---- KoGES (Korean). Likely GRCh37 -> LIFTOVER. ----
+  # ---- KoGES (Korean). Minimal 9-col PheWeb. NO EAF. beta/se/p ROUNDED. GRCh37? ----
+  # header: chrom pos ref alt rsids nearest_genes pval beta sebeta ; EA=alt, NEA=ref.
   koges:
     file: phenocode-KoGES_BLOODU.tsv.gz
     ancestry: EAS
     phenodef: BLOODU
-    format: pheweb?
-    build_claim: GRCh37
+    format: pheweb_minimal
+    build: GRCh37         # PRIOR — confirm empirically before lift
     build_confirmed: false
-    liftover: true                # CONFIRM
-    effect_scale: UNKNOWN
-    pval_field: UNKNOWN
-    column_map: {}
+    liftover: true        # gated on build-check
+    effect_scale: log_odds
+    rounded_precision: true
+    snpid_col: null
+    column_map:
+      chr: chrom
+      pos: pos
+      ea: alt
+      nea: ref
+      eaf: null           # ABSENT -> no eaf-QC, no palindrome fix, MR-MEGA issue
+      beta: beta
+      se: sebeta
+      p: pval
+      log10p: null
+      chisq: null
+      n: null
+    n_cases: null         # TODO
+    n_controls: null      # TODO
+    info: null
 
-# Meta-analysis grouping (Task 3). Recorded here so it's version-controlled.
+# Meta-analysis grouping (Task 3). Version-controlled.
 meta_groups:
   within_ancestry:
-    EUR: [biovu_agd250k(EUR), mgi, ukb, finngen]   # FIN grouped into EUR meta
+    EUR: [biovu_agd250k(EUR), mgi, ukb, finngen]   # FIN grouped into EUR
     AFR: [biovu_agd250k(AFR)]                        # single cohort for now
     EAS: [taiwan, koges]
   trans_ancestry:
-    primary: MR-MEGA               # models allelic heterogeneity by ancestry axes
+    primary: MR-MEGA               # NOTE: KoGES lacks EAF -> MR-MEGA axis limitation
     sensitivity: METAL_fixed_effect
-  primary_phenodef: "593"          # alternates (593.2 / GU_593 / GU_593.2) = sensitivity metas
+  primary_phenodef: "593"          # 593.2 / GU_593 / GU_593.2 = sensitivity metas
