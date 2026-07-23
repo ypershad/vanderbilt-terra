@@ -137,9 +137,9 @@ cohorts:
     ancestry: EUR
     phenodef: "593"
     format: pheweb
-    build: GRCh37         # PRIOR — confirm empirically vs FinnGen rsIDs before lift
-    build_confirmed: false
-    liftover: true        # gated on build-check
+    build: GRCh38         # CONFIRMED empirically (01_build_check: frac_pos_equal=1.0000
+    build_confirmed: true #   vs FinnGen; overturned the GRCh37 prior). No liftover.
+    liftover: false
     effect_scale: log_odds
     rounded_precision: true
     snpid_col: null
@@ -200,9 +200,9 @@ cohorts:
     ancestry: EAS
     phenodef: "593"
     format: pheweb
-    build: UNKNOWN        # CHECK EXPLICITLY vs FinnGen rsIDs; lift if GRCh37
-    build_confirmed: false
-    liftover: UNKNOWN
+    build: GRCh38         # CONFIRMED empirically (01_build_check: frac_pos_equal=1.0000)
+    build_confirmed: true
+    liftover: false
     effect_scale: log_odds
     rounded_precision: true
     snpid_col: null
@@ -232,9 +232,9 @@ cohorts:
     ancestry: EAS
     phenodef: BLOODU
     format: pheweb_minimal
-    build: GRCh37         # PRIOR — confirm empirically before lift
-    build_confirmed: false
-    liftover: true        # gated on build-check
+    build: GRCh37         # CONFIRMED empirically (01_build_check: frac_pos_equal=0.0097
+    build_confirmed: true #   vs FinnGen GRCh38 -> GRCh37). LIFTS to GRCh38. Only cohort.
+    liftover: true
     effect_scale: log_odds
     rounded_precision: true
     snpid_col: null
